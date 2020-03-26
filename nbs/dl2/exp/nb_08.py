@@ -19,6 +19,8 @@ def _get_files(p, fs, extensions=None):
            and ((not extensions) or f'.{f.split(".")[-1].lower()}' in extensions)]
     return res
 
+
+# get list of all filenames (associated with file extensions) in the path
 def get_files(path, extensions=None, recurse=False, include=None):
     path = Path(path)
     extensions = setify(extensions)
@@ -34,11 +36,15 @@ def get_files(path, extensions=None, recurse=False, include=None):
         f = [o.name for o in os.scandir(path) if o.is_file()]
         return _get_files(path, f, extensions)
 
+
+# functional programming paradigm: apply a list of fns on an item
 def compose(x, funcs, *args, order_key='_order', **kwargs):
     key = lambda o: getattr(o, order_key, 0)
-    for f in sorted(listify(funcs), key=key): x = f(x, **kwargs)
+    for f in sorted(listify(funcs), key=key):  # sort funcs by _order attribute
+        x = f(x, **kwargs)
     return x
 
+# base class
 class ItemList(ListContainer):
     def __init__(self, items, path='.', tfms=None):
         super().__init__(items)
@@ -46,6 +52,7 @@ class ItemList(ListContainer):
 
     def __repr__(self): return f'{super().__repr__()}\nPath: {self.path}'
 
+    # new constructor => figure out what class should be used as constructor (ImageList, TextList etc.)
     def new(self, items, cls=None):
         if cls is None: cls=self.__class__
         return cls(items, self.path, tfms=self.tfms)
@@ -151,13 +158,13 @@ class LabeledData():
             item = proc.deproc1(item) if isint else proc.deprocess(item)
         return item
 
-    @classmethod
+    @classmethod  # classmethod: takes class itself and returns an instance
     def label_by_func(cls, il, f, proc_x=None, proc_y=None):
         return cls(il, _label_by_func(il, f), proc_x=proc_x, proc_y=proc_y)
 
 def label_by_func(sd, f, proc_x=None, proc_y=None):
-    train = LabeledData.label_by_func(sd.train, f, proc_x=proc_x, proc_y=proc_y)
-    valid = LabeledData.label_by_func(sd.valid, f, proc_x=proc_x, proc_y=proc_y)
+    train = LabeledData.label_by_func(sd.train, f, proc_x=proc_x, proc_y=proc_y)  # this creates the vocab
+    valid = LabeledData.label_by_func(sd.valid, f, proc_x=proc_x, proc_y=proc_y)  # this uses vocab just created
     return SplitData(train,valid)
 
 class ResizeFixed(Transform):
@@ -171,8 +178,8 @@ class ResizeFixed(Transform):
 def to_byte_tensor(item):
     res = torch.ByteTensor(torch.ByteStorage.from_buffer(item.tobytes()))
     w,h = item.size
-    return res.view(h,w,-1).permute(2,0,1)
-to_byte_tensor._order=20
+    return res.view(h,w,-1).permute(2,0,1)  # pytorch expects channel first; PIL channel comes last
+to_byte_tensor._order=20   # can attach state directly to a function
 
 def to_float_tensor(item): return item.float().div_(255.)
 to_float_tensor._order=30
@@ -180,7 +187,7 @@ to_float_tensor._order=30
 def show_image(im, figsize=(3,3)):
     plt.figure(figsize=figsize)
     plt.axis('off')
-    plt.imshow(im.permute(1,2,0))
+    plt.imshow(im.permute(1,2,0))  # need to move the channel last to print it out
 
 class DataBunch():
     def __init__(self, train_dl, valid_dl, c_in=None, c_out=None):
@@ -201,20 +208,18 @@ SplitData.to_databunch = databunchify
 def normalize_chan(x, mean, std):
     return (x-mean[...,None,None]) / std[...,None,None]
 
-_m = tensor([0.47, 0.48, 0.45])
-_s = tensor([0.29, 0.28, 0.30])
-norm_imagenette = partial(normalize_chan, mean=_m.cuda(), std=_s.cuda())
-
 import math
 def prev_pow_2(x): return 2**math.floor(math.log2(x))
+# incoming channels => 27 = 3x3x3 (kernel*channels)
+# don't want more than that being output => purpose is to compress information; more is wasted computation
 
 def get_cnn_layers(data, nfs, layer, **kwargs):
     def f(ni, nf, stride=2): return layer(ni, nf, 3, stride=stride, **kwargs)
     l1 = data.c_in
     l2 = prev_pow_2(l1*3*3)
-    layers =  [f(l1  , l2  , stride=1),
-               f(l2  , l2*2, stride=2),
-               f(l2*2, l2*4, stride=2)]
+    layers =  [f(l1  , l2  , stride=1),  # 3 =>16
+               f(l2  , l2*2, stride=2),  # 16=>32
+               f(l2*2, l2*4, stride=2)]  # 32=>64
     nfs = [l2*4] + nfs
     layers += [f(nfs[i], nfs[i+1]) for i in range(len(nfs)-1)]
     layers += [nn.AdaptiveAvgPool2d(1), Lambda(flatten),
