@@ -7,7 +7,7 @@
 from exp.nb_08 import *
 
 def sgd_step(p, lr, **kwargs):
-    p.data.add_(-lr, p.grad.data)
+    p.data.add_(-lr, p.grad.data)  # .add => multiplies by the scalar (-lr) before performing the addition
     return p
 
 class Recorder(Callback):

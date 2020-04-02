@@ -208,6 +208,10 @@ SplitData.to_databunch = databunchify
 def normalize_chan(x, mean, std):
     return (x-mean[...,None,None]) / std[...,None,None]
 
+_m = tensor([0.47, 0.48, 0.45]) #.cuda()
+_s = tensor([0.29, 0.28, 0.30]) #.cuda()
+norm_imagenette = partial(normalize_chan, mean=_m, std=_s)
+
 import math
 def prev_pow_2(x): return 2**math.floor(math.log2(x))
 # incoming channels => 27 = 3x3x3 (kernel*channels)
